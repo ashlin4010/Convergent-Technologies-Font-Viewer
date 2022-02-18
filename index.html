@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Font Viewer</title>
+
+    <style>
+        body{
+            margin: 0;
+        }
+        label {
+            user-select: none;
+        }
+        .header {
+            background-color: #83acd8;
+            box-shadow: 0 0 4px 0;
+            position: sticky;
+            top: 0;
+        }
+        .header > * {
+            margin: 10px 5px;
+        }
+        #canvas-box {
+            display: flex;
+            flex-wrap: wrap;
+        }
+        .character-box {
+            display: grid;
+            justify-items: center;
+            padding-bottom: 15px;
+            padding-left: 5px;
+            padding-right: 5px;
+        }
+        #canvas, .canvas {
+            border: solid black 1px;
+            image-rendering: pixelated;
+        }
+    </style>
+
+
+</head>
+<body>
+
+<div class="header">
+    <input type="file" id="font-file">
+    <label for="font-format">Select Format:</label>
+    <select  id="font-format">
+        <option value="BXX">Auto</option>
+        <option value="B21">AWS (B21)</option>
+        <option value="B22">IWS (B22)</option>
+        <option value="B25">NGEN (B25)</option>
+    </select>
+
+    <label for="font-format-inferred">Inferred Format:</label>
+    <input id="font-format-inferred" readonly value="unknown"/>
+
+    <label for="font-scale">Scale</label>
+    <input id="font-scale" min="1" max="15" value="5" type="range" oninput="this.nextElementSibling.value = this.value">
+    <output>5</output>
+
+    <div>
+        <label>Alternative font<input id="font-alt" type="checkbox"></label>
+        <label>UnderLine font<input id="font-ul" type="checkbox"></label>
+        <label>line Drawing Mode<input id="font-lm" type="checkbox"></label>
+        <label>Half Bit Shift <input id="font-shift" checked type="checkbox"></label>
+    </div>
+
+</div>
+
+<div class="center" id="canvas-box"></div>
+
+<script>
+    let PIXEL_SCALE_WIDTH = 5; // initial scale
+    let PIXEL_SCALE_HEIGHT = 5; // initial scale
+    let fontBuffer;
+
+    const alternativeFontInput = document.getElementById("font-alt");
+    const underLineInput = document.getElementById("font-ul");
+    const lineDrawingModeInput = document.getElementById("font-lm");
+    const halfBitShiftInput = document.getElementById("font-shift");
+
+    const fontInput = document.getElementById('font-file');
+    const scaleInput = document.getElementById("font-scale");
+    const formatInput = document.getElementById("font-format");
+    const formatInferredInput = document.getElementById("font-format-inferred");
+
+    const canvasBox = document.getElementById('canvas-box');
+
+    alternativeFontInput.onchange = main;
+    underLineInput.onchange = main;
+    lineDrawingModeInput.onchange = main;
+    halfBitShiftInput.onchange = main;
+
+    fontInput.onchange = async (e) => {
+        let file = fontInput.files[0];
+        fontBuffer = await file.arrayBuffer();
+        main();
+    }
+
+    scaleInput.onchange = (e) => {
+        PIXEL_SCALE_WIDTH = PIXEL_SCALE_HEIGHT = e.target.value || 10;
+        main();
+    }
+
+    formatInput.onchange = (e) => {
+        main();
+    }
+
+    function main() {
+        canvasBox.innerHTML = "";
+        if(!fontBuffer) return;
+        let format = formatInput.value;
+        let bitmaps, charWidth, charHeight;
+        let scaleWidth = PIXEL_SCALE_WIDTH;
+        let scaleHeight = PIXEL_SCALE_HEIGHT;
+        let inferredInput;
+
+
+        if(fontBuffer.byteLength <= 4096) {
+            inferredInput = "AWS (B21)";
+        } else if (fontBuffer.byteLength === 8701 || fontBuffer.byteLength <= 8192) {
+            inferredInput = "IWS (B22)";
+        } else {
+            inferredInput = "NGEN (B25)";
+        }
+
+        formatInferredInput.value = inferredInput;
+
+        if(format === "BXX") {
+            if(fontBuffer.byteLength <= 4096) {
+                format = "B21";
+            } else if (fontBuffer.byteLength === 8701 || fontBuffer.byteLength <= 8192) {
+                format = "B22";
+            } else {
+                format = "B25";
+            }
+        }
+
+
+        if(format === "B21") {
+            // AWS
+            bitmaps = getAWSFont(fontBuffer, ...getFontAttributes());
+            // the bitmap was scaled 2x to allow for half-bit-shift
+            // this image must then be scaled back down to have the same
+            // relative size on the screen
+            charWidth = 9 * 2;
+            charHeight = 11 * 2;
+            scaleWidth = PIXEL_SCALE_WIDTH / 2;
+            scaleHeight = PIXEL_SCALE_HEIGHT / 2;
+        } else if (format === "B22") {
+            // IWS
+            bitmaps = getIWSFont(fontBuffer);
+            charWidth = 10;
+            charHeight = 15;
+        } else {
+            //NGEN
+            charWidth = 9 * 2;
+            charHeight = 12 * 2;
+            scaleWidth = PIXEL_SCALE_WIDTH / 2;
+            scaleHeight = PIXEL_SCALE_HEIGHT / 2;
+            bitmaps = getNGENFont(fontBuffer, ...getFontAttributes());
+        }
+
+        bitmaps.forEach((characterBitmap, i) => {
+            let imageData = generateImageData(characterBitmap, charWidth, charHeight);
+            addCharacterCanvas(imageData, charWidth, charHeight, scaleWidth, scaleHeight, i);
+        });
+    }
+    
+    function enableFontAttributesInputs(enable) {
+        alternativeFontInput.disabled = !enable;
+        underLineInput.disabled = !enable;
+        lineDrawingModeInput.disabled = !enable;
+        halfBitShiftInput.disabled = !enable;
+    }
+
+    function getFontAttributes() {
+        let attributes = [];
+        attributes[0] = alternativeFontInput.checked;
+        attributes[1] = underLineInput.checked;
+        attributes[2] = lineDrawingModeInput.checked;
+        attributes[3] = halfBitShiftInput.checked;
+        return attributes;
+    }
+
+    function toBinaryString(x, length) {
+        let bin = 0;
+        let rem, i = 1, step = 1;
+        while (x !== 0) {
+            rem = x % 2;
+            x = (x / 2) | 0;
+            bin = bin + rem * i;
+            i = i * 10;
+        }
+        return bin.toString().padStart(length, "0");
+    }
+
+    function getByteAtAddress(address, arrayBuffer) {
+        let byteBuffer = arrayBuffer.slice(address, address + 1);
+        return new Uint8Array(byteBuffer);
+    }
+
+    // IWS decoding
+
+    function getIWSFont(fontData) {
+        let bitmaps = [];
+
+        for(let i = 0; i < 256; i++) {
+            let characterWords = getCharacterWords(fontData, i);
+            let characterBitmap = trimCharacterWordsIWS(characterWords);
+            bitmaps.push(characterBitmap);
+        }
+        return bitmaps;
+    }
+
+    function getCharacterWords(font, index) {
+        let characterLength = 32; // 32 bytes
+        let characterStart = index * characterLength;
+        let characterEnd = characterStart + characterLength;
+
+        font = Array.from(new Uint8Array(font));
+
+        let characterBytes = font.slice(characterStart, characterEnd); // Array of character Bytes
+
+        let characterBinary = [];
+
+        // Convert array of bytes to array of 16 words each of 16 bits (16^2 / 8 = 32)
+        characterBytes.forEach((byte, i) => {
+            let newIndex = Math.floor(i / 2);
+            let binaryArray = toBinaryString(byte, 8).split("").map((d) => parseInt(d));
+
+            characterBinary[newIndex] = (i % 2 === 0) ? binaryArray : [...binaryArray, ...characterBinary[newIndex]];
+        });
+
+        return characterBinary;
+    }
+
+    function trimCharacterWordsIWS(characterWords) {
+        // There are 16 words of 16 bits per character
+        // Characters are 15 rows by 10 columns
+
+        // Word 0 is not used (As far as I know)
+        characterWords = characterWords.slice(1);
+
+        // The first 6 bits are not used. (As far as I know)
+        characterWords = characterWords.map((pixels) => [...pixels].slice(6));
+
+        return characterWords;
+
+    }
+
+    // NGEN
+    function getNGENFont(fontData, alternativeFont, underLine, lineDrawingMode, halfBitShift) {
+        let bitmaps = [];
+
+        for(let i = 0; i < 256; i++) {
+            let characterWords = getCharacterWords(fontData, i);
+            let characterBitmap = trimCharacterWordsNGEN(characterWords);
+
+            // scale and apply Attributes
+            characterBitmap = halfBitShiftScaleNGEN(characterBitmap, halfBitShift);
+            bitmaps.push(characterBitmap);
+        }
+        return bitmaps;
+    }
+
+    function trimCharacterWordsNGEN(characterWords) {
+        // There are 16 words of 16 bits per character
+        // Characters are 12 rows by 9 columns
+
+        // Only words 0-11 are used
+        characterWords = characterWords.slice(null, 12);
+
+        // The first 6 bits are not used. (As far as I know)
+        characterWords = characterWords.map((pixels) => [...pixels].slice(6));
+
+        return characterWords;
+    }
+
+    function halfBitShiftScaleNGEN(pixelData, shiftEN=true) {
+        let scaled = [];
+        pixelData.forEach((row) => {
+            let newRow = [];
+            let shift = row[0] === 1;
+
+            row = row.slice(1);
+
+            row.forEach((x) => {
+                newRow.push(x);
+                newRow.push(x);
+            });
+
+            // half-bit shift
+            if(shiftEN && shift) {
+                newRow.pop()
+                newRow.unshift(0);
+            }
+
+            scaled.push(newRow);
+            scaled.push(newRow);
+        });
+
+        return scaled.map(row => [...row]);
+    }
+
+    // AWS decoding
+    function getAWSFont(fontData, alternativeFont, underLine, lineDrawingMode, halfBitShift) {
+        const characterSetLength = 2**7;
+        let bitmaps = [];
+
+        for(let ccb = 0; ccb < characterSetLength; ccb++) {
+            let characterCode = toBinaryString(ccb, 7);
+
+            let bitmap = getAWSCharacterBitmap(fontData, characterCode, alternativeFont);
+            // scale and apply Attributes
+            bitmap = halfBitShiftScale(bitmap, halfBitShift);
+
+            if(underLine) bitmap = underLineModifier(bitmap);
+            if(lineDrawingMode) bitmap = lineDrawingModifier(bitmap);
+
+            bitmaps.push(bitmap);
+        }
+
+        return bitmaps;
+    }
+
+    function getAWSCharacterBitmap(fontData, characterCode, alternativeFont=false) {
+        let addresses = Array.from([0,1,2,3,4,5,6,7,8,9,10], line => {
+            return `${ alternativeFont ? 1 : 0 }${ toBinaryString(line, 4) }${ characterCode }`;
+        });
+        let pixelBytes = addresses.map(bytes =>
+            getByteAtAddress(parseInt(bytes, 2), fontData)
+        );
+        return pixelBytes.map(byte =>
+            toBinaryString(byte, 8).split('').reverse().map(digit => parseInt(digit))
+        );
+    }
+
+    function halfBitShiftScale(pixelData, shift=true) {
+        let scaled = [];
+        pixelData.forEach((row) => {
+            let newRow = [];
+            row.forEach((x) => {
+                newRow.push(x);
+                newRow.push(x);
+            });
+
+            // half-bit shift
+            if(shift && newRow[newRow.length - 1] === 0) newRow.unshift(newRow.pop());
+
+            newRow.pop(); // Remove Bit-Shift data
+            newRow.pop(); // Remove Bit-Shift data
+
+            scaled.push(newRow);
+            scaled.push(newRow);
+        });
+        return scaled.map(row => [0,0, ...row, 0,0]);
+    }
+
+    function underLineModifier(pixelData) {
+        return pixelData.map(row => [1,1, ...row.slice(2, row.length - 2), 1,1]);
+    }
+
+    function lineDrawingModifier(data) {
+        return data.map(row => {
+            return [row[2], row[2], row[6], row[6], row[6],row[6], row[6], row[6], row[8], row[8], row[10], row[10], row[12], row[12], row[14], row[14], row[4], row[4]];
+        });
+    }
+
+    // Canvas stuff
+    function generateImageData(bitmap, charWidth, charHeight) {
+        const WIDTH = charWidth;
+        const HEIGHT = charHeight;
+
+        const hexPixels = bitmap.map(row => row.map(pixel => pixel === 0 ? "#ffffff": "#000000"));
+        const concat = (xs, ys) => xs.concat(ys);
+        const hexToRGBA = hexStr => [
+            parseInt(hexStr.substr(1, 2), 16),
+            parseInt(hexStr.substr(3, 2), 16),
+            parseInt(hexStr.substr(5, 2), 16),
+            255
+        ];
+
+        const flattenedRGBAValues = hexPixels
+            .reduce(concat)  // 1d list of hex codes
+            .map(hexToRGBA)  // 1d list of [R, G, B, A] byte arrays
+            .reduce(concat); // 1d list of bytes
+        return new ImageData(Uint8ClampedArray.from(flattenedRGBAValues), WIDTH, HEIGHT);
+    }
+
+    function updateCanvas(canvas, imageData, scaleWidth, scaleHeight) {
+        const ctx = canvas.getContext("2d");
+        ctx.resetTransform()
+        ctx.scale(scaleWidth, scaleHeight);
+        ctx.imageSmoothingEnabled = false;
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.putImageData(imageData, 0, 0);
+        ctx.drawImage(canvas, 0, 0);
+    }
+
+    function addCharacterCanvas(imageData, charWidth, charHeight, scaleWidth, scaleHeight, label="") {
+        let canvas = document.createElement('canvas');
+        canvas.width = charWidth * scaleWidth;
+        canvas.height = charHeight * scaleHeight;
+        canvas.className = "canvas";
+
+        let text = document.createElement('a');
+        text.innerText = label;
+
+        let box = document.createElement('div');
+        box.className = "character-box";
+        box.appendChild(canvas);
+        box.appendChild(text);
+
+        canvasBox.appendChild(box);
+
+        updateCanvas(canvas, imageData, scaleWidth, scaleHeight);
+    }
+
+</script>
+
+</body>
+</html>
