@@ -3,27 +3,44 @@
 <head>
     <meta charset="UTF-8">
     <title>Font Viewer</title>
+    <link rel="shortcut icon" type="image/x-icon" href="favicon.ico">
 
     <style>
         body{
             margin: 0;
+            font-family: sans-serif;
         }
         label {
             user-select: none;
-            padding-right: 20px;
+            margin-right: 0;
+        }
+        input, select {
+            margin-right: 40px;
         }
         .header {
             background-color: #83acd8;
             box-shadow: 0 0 4px 0;
             position: sticky;
             top: 0;
+            padding: 5px;
         }
-        .header > * {
-            margin: 10px 5px;
+        #header-box {
+            display: flex;
+            flex-direction: row;
+            align-items: start;
+            width: 90%;
+            flex-wrap: wrap;
         }
         #canvas-box {
+            margin-top: 10px;
             display: flex;
             flex-wrap: wrap;
+        }
+        #canvas-box div{
+            text-align: center;
+            margin-left: auto;
+            margin-right: auto;
+            margin-top: 100px;
         }
         .character-box {
             display: grid;
@@ -36,45 +53,90 @@
             border: solid black 1px;
             image-rendering: pixelated;
         }
+        #github {
+            position: absolute;
+            text-align: center;
+            top: 0;
+            right: 0;
+        }
+        #github img {
+            display: block;
+            height: 40px;
+            padding: 4px;
+        }
+        #options {
+            max-width: 85%;
+            width: fit-content;
+        }
+        #options p {
+            margin-bottom: 0;
+        }
+        #drop-area {
+            height: 100vh;
+            width: 100vw;
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: -1;
+        }
     </style>
-
-
 </head>
 <body>
 
 <div class="header">
-    <input type="file" id="font-file">
-    <label for="font-format">Select Format:</label>
-    <select  id="font-format">
-        <option value="BXX">Auto</option>
-        <option value="B21">AWS (B21)</option>
-        <option value="B22">IWS (B22)</option>
-        <option value="B25">NGEN (B25)</option>
-    </select>
+    <b>Font Settings</b>
+    <div id="header-box">
+        <div>
+            <label for="font-file">Select Font File:</label>
+            <input type="file" id="font-file">
+        </div>
 
-    <label for="font-format-inferred">Inferred Format:</label>
-    <input id="font-format-inferred" readonly value="unknown"/>
+        <div>
+            <label for="font-format">Select Format:</label>
+            <select  id="font-format">
+                <option value="BXX">Auto Infer</option>
+                <option value="B21">AWS (B21)</option>
+                <option value="B22">IWS (B22)</option>
+                <option value="B25">NGEN (B25)</option>
+            </select>
+        </div>
 
-    <label for="font-scale">Scale</label>
-    <input id="font-scale" min="1" max="15" value="5" type="range" oninput="this.nextElementSibling.value = this.value">
-    <output>5</output>
+        <div>
+            <label for="font-format-inferred">Inferred Format:</label>
+            <input id="font-format-inferred" readonly value="unknown"/>
+        </div>
 
-    <div>
-        <label>Alternative font<input id="font-alt" type="checkbox"></label>
-        <label>UnderLine font<input id="font-ul" type="checkbox"></label>
-        <label>line Drawing Mode<input id="font-lm" type="checkbox"></label>
-        <label>Half Bit Shift <input id="font-shift" checked type="checkbox"></label>
+        <div>
+            <label for="font-scale">Scale:</label>
+            <input id="font-scale" min="1" max="15" value="7" type="range" oninput="this.nextElementSibling.value = this.value">
+            <output>7</output>
+        </div>
     </div>
 
+    <div id="options">
+        <p><b>Hardware Modes</b></p>
+        <label>Alternative Font<input id="font-alt" type="checkbox"></label>
+        <label>Underline Font<input id="font-ul" type="checkbox"></label>
+        <label>Line-drawing-mode<input id="font-lm" type="checkbox"></label>
+        <label>Half-bit-shift <input id="font-shift" checked type="checkbox"></label>
+    </div>
 
-
+    <div id="github">
+        <img src="svg/github.svg" width="100" /></a>
+        <a href="https://github.com/ashlin4010/Convergent-Technologies-Font-Viewer">GitHub</a>
+    </div>
 </div>
 
-<div class="center" id="canvas-box"></div>
+<div id="canvas-box"><div>
+    <h2>Drag and Drop Font File Here</h2><p>Example fonts can be found <a href="https://github.com/ashlin4010/Convergent-Technologies-Font-Viewer/tree/main/examples">here</a></p>
+    </div>
+</div>
+<div id="drop-area"></div>
+
 
 <script>
-    let PIXEL_SCALE_WIDTH = 5; // initial scale
-    let PIXEL_SCALE_HEIGHT = 5; // initial scale
+    let PIXEL_SCALE_WIDTH = 7; // initial scale
+    let PIXEL_SCALE_HEIGHT = 7; // initial scale
     let fontBuffer;
 
     const alternativeFontInput = document.getElementById("font-alt");
@@ -88,6 +150,7 @@
     const formatInferredInput = document.getElementById("font-format-inferred");
 
     const canvasBox = document.getElementById('canvas-box');
+    const dropArea = document.getElementById('drop-area');
 
     alternativeFontInput.onchange = main;
     underLineInput.onchange = main;
@@ -105,13 +168,34 @@
         main();
     }
 
-    formatInput.onchange = (e) => {
+    formatInput.onchange = (e) => main();
+
+    dropArea.addEventListener('drop', async event => {
+        event.preventDefault();
+        let file = event.dataTransfer.files[0];
+        fontBuffer = await file.arrayBuffer();
         main();
-    }
+    });
+
+    dropArea.addEventListener('dragover', (event) => {
+        event.preventDefault();
+    });
+
+    canvasBox.addEventListener('drop', async event => {
+        event.preventDefault();
+        let file = event.dataTransfer.files[0];
+        fontBuffer = await file.arrayBuffer();
+        main();
+    });
+
+    canvasBox.addEventListener('dragover', (event) => {
+        event.preventDefault();
+    });
+
 
     function main() {
         canvasBox.innerHTML = "";
-        if(!fontBuffer) return;
+        if (!fontBuffer) return;
         let format = formatInput.value;
         let bitmaps, charWidth, charHeight;
         let scaleWidth = PIXEL_SCALE_WIDTH;
@@ -119,7 +203,8 @@
         let inferredInput;
 
 
-        if(fontBuffer.byteLength <= 4096) {
+        // auto select font format
+        if (fontBuffer.byteLength <= 4096) {
             inferredInput = "AWS (B21)";
         } else if (fontBuffer.byteLength === 8701 || fontBuffer.byteLength <= 8192) {
             inferredInput = "IWS (B22)";
@@ -129,8 +214,8 @@
 
         formatInferredInput.value = inferredInput;
 
-        if(format === "BXX") {
-            if(fontBuffer.byteLength <= 4096) {
+        if (format === "BXX") {
+            if (fontBuffer.byteLength <= 4096) {
                 format = "B21";
             } else if (fontBuffer.byteLength === 8701 || fontBuffer.byteLength <= 8192) {
                 format = "B22";
@@ -139,8 +224,7 @@
             }
         }
 
-
-        if(format === "B21") {
+        if (format === "B21") {
             // AWS
             bitmaps = getAWSFont(fontBuffer, ...getFontAttributes());
             // the bitmap was scaled 2x to allow for half-bit-shift
@@ -164,17 +248,10 @@
             bitmaps = getNGENFont(fontBuffer, ...getFontAttributes());
         }
 
-        bitmaps.forEach((characterBitmap, i) => {
+        bitmaps.forEach(([characterCode, characterBitmap], i) => {
             let imageData = generateImageData(characterBitmap, charWidth, charHeight);
-            addCharacterCanvas(imageData, charWidth, charHeight, scaleWidth, scaleHeight, i);
+            addCharacterCanvas(imageData, charWidth, charHeight, scaleWidth, scaleHeight, characterCode);
         });
-    }
-    
-    function enableFontAttributesInputs(enable) {
-        alternativeFontInput.disabled = !enable;
-        underLineInput.disabled = !enable;
-        lineDrawingModeInput.disabled = !enable;
-        halfBitShiftInput.disabled = !enable;
     }
 
     function getFontAttributes() {
@@ -204,28 +281,26 @@
     }
 
     // IWS decoding
-
     function getIWSFont(fontData) {
         let bitmaps = [];
 
         for(let i = 0; i < 256; i++) {
             let characterWords = getCharacterWords(fontData, i);
             let characterBitmap = trimCharacterWordsIWS(characterWords);
-            bitmaps.push(characterBitmap);
+            bitmaps.push([i, characterBitmap]);
         }
         return bitmaps;
     }
 
     function getCharacterWords(font, index) {
-        let characterLength = 32; // 32 bytes
-        let characterStart = index * characterLength;
-        let characterEnd = characterStart + characterLength;
-
+        // return 16 words of 16 bits
         font = Array.from(new Uint8Array(font));
+        const characterLength = 32; // 32 bytes
+        const characterStart = index * characterLength;
+        const characterEnd = characterStart + characterLength;
 
-        let characterBytes = font.slice(characterStart, characterEnd); // Array of character Bytes
-
-        let characterBinary = [];
+        const characterBinary = [];
+        const characterBytes = font.slice(characterStart, characterEnd); // Array of character Bytes
 
         // Convert array of bytes to array of 16 words each of 16 bits (16^2 / 8 = 32)
         characterBytes.forEach((byte, i) => {
@@ -262,7 +337,7 @@
 
             // scale and apply Attributes
             characterBitmap = halfBitShiftScaleNGEN(characterBitmap, halfBitShift);
-            bitmaps.push(characterBitmap);
+            bitmaps.push([i, characterBitmap]);
         }
         return bitmaps;
     }
@@ -321,7 +396,7 @@
             if(underLine) bitmap = underLineModifier(bitmap);
             if(lineDrawingMode) bitmap = lineDrawingModifier(bitmap);
 
-            bitmaps.push(bitmap);
+            bitmaps.push([characterCode, bitmap]);
         }
 
         return bitmaps;
@@ -331,9 +406,11 @@
         let addresses = Array.from([0,1,2,3,4,5,6,7,8,9,10], line => {
             return `${ alternativeFont ? 1 : 0 }${ toBinaryString(line, 4) }${ characterCode }`;
         });
+
         let pixelBytes = addresses.map(bytes =>
             getByteAtAddress(parseInt(bytes, 2), fontData)
         );
+
         return pixelBytes.map(byte =>
             toBinaryString(byte, 8).split('').reverse().map(digit => parseInt(digit))
         );
@@ -405,20 +482,26 @@
         let canvas = document.createElement('canvas');
         canvas.width = charWidth * scaleWidth;
         canvas.height = charHeight * scaleHeight;
-        canvas.className = "canvas";
+
+        updateCanvas(canvas, imageData, scaleWidth, scaleHeight);
 
         let text = document.createElement('a');
         text.innerText = label;
 
+        let img = document.createElement('img');
+        img.width = charWidth * scaleWidth;
+        img.height = charHeight * scaleHeight;
+        img.className = "canvas";
+        img.src = canvas.toDataURL();
+
         let box = document.createElement('div');
         box.className = "character-box";
-        box.appendChild(canvas);
+        box.appendChild(img);
         box.appendChild(text);
 
         canvasBox.appendChild(box);
-
-        updateCanvas(canvas, imageData, scaleWidth, scaleHeight);
     }
+
 
 </script>
 

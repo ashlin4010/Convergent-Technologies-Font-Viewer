@@ -17,8 +17,8 @@ A detailed explanation of the character ROM's layout can be found on page 230 of
 
 #### IWS (B22)
 The IWS used 10x15 character cells mapped directly from memory. When not in memory fonts are saved in a `.font` file with a size of 8192 bytes.
-This file contains 256 characters each stored as a 16 by 16 pixel array.
+This file contains 256 characters each stored as a 16x16 bitmap.
 
 #### NGEN (B25)
 The NGEN used 9x12 character cells mapped from memory with some additional hardware to provide a half-pixel-shift, improving the visual quality of the characters.
-Like the IWS the font format used by the NGEN contains 256 characters with each character stored as a 16 by 16 pixel array.
+Like the IWS the font format used by the NGEN contains 256 characters with each character stored as a 16x16 bitmap.
