@@ -28,8 +28,9 @@
             display: flex;
             flex-direction: row;
             align-items: start;
-            width: 90%;
+            width: 94%;
             flex-wrap: wrap;
+            min-height: 40px;
         }
         #canvas-box {
             margin-top: 10px;
@@ -73,11 +74,17 @@
         }
         #drop-area {
             height: 100vh;
-            width: 100vw;
+            width: 100%;
             position: absolute;
             top: 0;
             left: 0;
             z-index: -1;
+            overflow: hidden;
+        }
+        #font-scale {
+            margin-right: 5px;
+            position: relative;
+            top: 2px;
         }
     </style>
 </head>
@@ -111,7 +118,15 @@
             <input id="font-scale" min="1" max="15" value="7" type="range" oninput="this.nextElementSibling.value = this.value">
             <output>7</output>
         </div>
+
+        <div id="github">
+            <img src="svg/github.svg" width="100" /></a>
+            <a href="https://github.com/ashlin4010/Convergent-Technologies-Font-Viewer">GitHub</a>
+        </div>
+
     </div>
+
+    <hr>
 
     <div id="options">
         <p><b>Hardware Modes</b></p>
@@ -121,14 +136,10 @@
         <label>Half-bit-shift <input id="font-shift" checked type="checkbox"></label>
     </div>
 
-    <div id="github">
-        <img src="svg/github.svg" width="100" /></a>
-        <a href="https://github.com/ashlin4010/Convergent-Technologies-Font-Viewer">GitHub</a>
-    </div>
 </div>
 
 <div id="canvas-box"><div id="info">
-    <h2>Drag and Drop Font File Here</h2><p>Example fonts can be found <a href="https://github.com/ashlin4010/Convergent-Technologies-Font-Viewer/tree/main/examples">here</a></p>
+    <h2>Drag and Drop Font File Here</h2><p>Example fonts can be found <a href="https://github.com/ashlin4010/Convergent-Technologies-Font-Viewer/tree/main/examples" target="_blank">here</a></p>
     </div>
 </div>
 <div id="drop-area"></div>
@@ -184,6 +195,7 @@
     canvasBox.addEventListener('drop', async event => {
         event.preventDefault();
         let file = event.dataTransfer.files[0];
+        if(file.name.endsWith(".png")) return;
         fontBuffer = await file.arrayBuffer();
         main();
     });
@@ -194,8 +206,8 @@
 
 
     function main() {
-        canvasBox.innerHTML = "";
         if (!fontBuffer) return;
+        canvasBox.innerHTML = "";
         let format = formatInput.value;
         let bitmaps, charWidth, charHeight;
         let scaleWidth = PIXEL_SCALE_WIDTH;
